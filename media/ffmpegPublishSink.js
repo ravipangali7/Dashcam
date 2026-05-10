@@ -13,6 +13,8 @@ class FfmpegPublishSink {
    * @param {string} opts.publishUrl e.g. rtsp://127.0.0.1:8554/dashcam
    * @param {string} [opts.inputFormat] ffmpeg demuxer short name, e.g. mpegts — omit to let ffmpeg probe
    * @param {string[]} [opts.extraArgsBeforeInput] additional argv inserted before -i pipe:0
+   * @param {'copy'|'h264'} [opts.videoOut] copy stream vs re-encode H.264 for cleaner VLC (more CPU)
+   * @param {number} [opts.h264Crf] default ~20 (lower = sharper, larger bitrate)
    */
   constructor(remoteLabel, opts) {
     this.remoteLabel = remoteLabel;
@@ -25,25 +27,51 @@ class FfmpegPublishSink {
 
   _spawn() {
     const { log, ffmpegBin, publishUrl, inputFormat, extraArgsBeforeInput = [] } = this.opts;
+    const videoOut = this.opts.videoOut === "h264" ? "h264" : "copy";
     const pre = [];
     if (inputFormat) {
       pre.push("-f", inputFormat);
     }
+    const fflags = videoOut === "h264" ? "+genpts" : "+nobuffer+discardcorrupt";
+    const probe =
+      videoOut === "h264" && !extraArgsBeforeInput.some((a) => a === "-analyzeduration" || a === "-probesize")
+        ? ["-analyzeduration", "10M", "-probesize", "10M"]
+        : [];
+    const postInput =
+      videoOut === "h264"
+        ? [
+            "-map",
+            "0:v:0",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-tune",
+            "zerolatency",
+            "-crf",
+            String(Number(this.opts.h264Crf) > 0 ? Number(this.opts.h264Crf) : 20),
+            "-pix_fmt",
+            "yuv420p",
+            "-g",
+            "50",
+            "-an",
+          ]
+        : ["-c", "copy"];
     const argv = [
       ffmpegBin,
       "-hide_banner",
       "-loglevel",
       "warning",
       "-fflags",
-      "+nobuffer+discardcorrupt",
+      fflags,
       "-flags",
       "low_delay",
       ...pre,
+      ...probe,
       ...extraArgsBeforeInput,
       "-i",
       "pipe:0",
-      "-c",
-      "copy",
+      ...postInput,
       "-f",
       "rtsp",
       "-rtsp_transport",

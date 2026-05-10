@@ -39,6 +39,11 @@ const MEDIAMTX_PLAYBACK_PATH_TEMPLATE = (process.env.MEDIAMTX_PLAYBACK_PATH_TEMP
 const MEDIAMTX_UNKNOWN_PHONE_LABEL = (process.env.MEDIAMTX_UNKNOWN_PHONE_LABEL || "unknown").trim() || "unknown";
 const MEDIAMTX_PLAYBACK_INCLUDE_HLS =
   String(process.env.MEDIAMTX_PLAYBACK_INCLUDE_HLS || "").toLowerCase() === "true";
+const MEDIA_JT1078_TCP_UNWRAP =
+  String(process.env.MEDIA_JT1078_TCP_UNWRAP || "").toLowerCase() === "true";
+const MEDIA_JT1078_HEADER_LEN = Number(process.env.MEDIA_JT1078_HEADER_LEN) || 30;
+const MEDIAMTX_FFMPEG_VIDEO = (process.env.MEDIAMTX_FFMPEG_VIDEO || "copy").toLowerCase();
+const MEDIAMTX_FFMPEG_CRF = Number(process.env.MEDIAMTX_FFMPEG_CRF) || 20;
 const AUTO_STREAM_9101 = String(process.env.AUTO_STREAM_9101 || "").toLowerCase() === "true";
 const STREAM_CHANNEL_NO = Number(process.env.STREAM_CHANNEL_NO) || 1;
 const STREAM_DATA_TYPE = Number(process.env.STREAM_DATA_TYPE) || 1;
@@ -84,6 +89,8 @@ function buildFfmpegMediamtx(mediaSocket) {
     publishUrl,
     inputFormat: MEDIAMTX_FFMPEG_INPUT_FORMAT || undefined,
     extraArgsBeforeInput: ffmpegExtraArgs,
+    videoOut: MEDIAMTX_FFMPEG_VIDEO === "h264" ? "h264" : "copy",
+    h264Crf: MEDIAMTX_FFMPEG_CRF,
   };
 }
 
@@ -220,6 +227,8 @@ jt808Server.listen(PORT, HOST, async () => {
       recordDir: MEDIA_RECORD_DIR || null,
       buildFfmpegMediamtx,
       logMediamtxVlcHint: !MEDIAMTX_FFMPEG_ENABLED,
+      unwrapJt1078: MEDIA_JT1078_TCP_UNWRAP,
+      jt1078HeaderLen: MEDIA_JT1078_HEADER_LEN,
     });
     if (MEDIAMTX_FFMPEG_ENABLED) {
       const mode =
@@ -227,8 +236,12 @@ jt808Server.listen(PORT, HOST, async () => {
           ? `static ${publishUrlMode.url}`
           : `per-ip phone → ${publishUrlMode.template}`;
       const h = getMediamtxPlaybackHints();
+      const pipe = [
+        MEDIA_JT1078_TCP_UNWRAP ? `jt1078-unwrap(header=${MEDIA_JT1078_HEADER_LEN})` : "no-jt1078-unwrap",
+        `ffmpeg-video=${MEDIAMTX_FFMPEG_VIDEO === "h264" ? `h264(crf=${MEDIAMTX_FFMPEG_CRF})` : "copy"}`,
+      ].join(", ");
       log.info(
-        `[mediamtx] ffmpeg bridge on (${mode})${h ? `; hints ${JSON.stringify(h)}` : "; set MEDIAMTX_PLAYBACK_HOST / MEDIAMTX_PLAYBACK_HINTS for VLC URLs"}`
+        `[mediamtx] ffmpeg bridge on (${mode}; ${pipe})${h ? `; hints ${JSON.stringify(h)}` : "; set MEDIAMTX_PLAYBACK_HOST / MEDIAMTX_PLAYBACK_HINTS for VLC URLs"}`
       );
     } else {
       log.info(

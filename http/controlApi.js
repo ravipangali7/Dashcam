@@ -93,7 +93,7 @@ function startControlApi(port, host, log, ctx) {
           ...(hints
             ? {
                 mediamtxPlayback: hints,
-                note: "VLC: Media → Open Network Stream… → paste the rtsp:// URL (needs ffmpeg publish + TCP 8554 open).",
+                note: "VLC: Media → Open Network Stream… → paste rtsp:// URL. Prefer RTSP over TCP in VLC prefs if the picture breaks up; needs ffmpeg publish + TCP 8554 open.",
               }
             : {}),
         });

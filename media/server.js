@@ -1,12 +1,13 @@
 const net = require("node:net");
 const { debug, hexPreview } = require("../debugLog");
 const { createMediaPipelineSink } = require("./sinkFactory");
+const { Jt1078UnwrapSink } = require("./jt1078TcpUnwrap");
 
 /**
  * @param {number} port
  * @param {string} host
  * @param {{ info: Function, warn: Function }} log
- * @param {{ recordDir?: string|null, ffmpegMediamtx?: { ffmpegBin: string, publishUrl: string, inputFormat?: string, extraArgsBeforeInput?: string[] }|null, buildFfmpegMediamtx?: (s: import('net').Socket) => { ffmpegBin: string, publishUrl: string, inputFormat?: string, extraArgsBeforeInput?: string[] }|null, logMediamtxVlcHint?: boolean }} sinkOpts
+ * @param {{ recordDir?: string|null, ffmpegMediamtx?: { ffmpegBin: string, publishUrl: string, inputFormat?: string, extraArgsBeforeInput?: string[] }|null, buildFfmpegMediamtx?: (s: import('net').Socket) => { ffmpegBin: string, publishUrl: string, inputFormat?: string, extraArgsBeforeInput?: string[] }|null, logMediamtxVlcHint?: boolean, unwrapJt1078?: boolean, jt1078HeaderLen?: number }} sinkOpts
  */
 function startMediaTcpServer(port, host, log, sinkOpts) {
   const srv = net.createServer((socket) => {
@@ -22,7 +23,14 @@ function startMediaTcpServer(port, host, log, sinkOpts) {
         `[media] ${remote} raw bytes only — no RTSP publisher. Set MEDIAMTX_FFMPEG_ENABLED=true (and install ffmpeg) so MediaMTX gets a stream; open firewall TCP 8554 for VLC.`
       );
     }
-    const sink = createMediaPipelineSink(remote, { log, recordDir: sinkOpts.recordDir, ffmpegMediamtx: ff });
+    let sink = createMediaPipelineSink(remote, { log, recordDir: sinkOpts.recordDir, ffmpegMediamtx: ff });
+    if (sinkOpts.unwrapJt1078) {
+      sink = new Jt1078UnwrapSink(sink, {
+        headerLen: sinkOpts.jt1078HeaderLen,
+        log,
+        label: remote,
+      });
+    }
     let mediaChunks = 0;
     socket.on("data", (buf) => {
       mediaChunks += 1;
