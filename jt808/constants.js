@@ -8,6 +8,10 @@ exports.MSG = {
   TERMINAL_REGISTER: 0x0100,
   TERMINAL_AUTH: 0x0102,
   LOCATION_REPORT: 0x0200,
+  /** Batch / supplementary positioning data upload */
+  LOCATION_BATCH: 0x0704,
+  /** Vendor extension (e.g. BSJ); not in core JT808-2013 short list */
+  VENDOR_EXTENSION_1003: 0x1003,
   PLATFORM_GENERAL_RESPONSE: 0x8001,
   REGISTER_RESPONSE: 0x8100,
   REALTIME_AV_REQUEST: 0x9101,

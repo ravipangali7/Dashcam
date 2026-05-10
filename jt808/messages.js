@@ -119,6 +119,74 @@ function decode0100(body) {
   };
 }
 
+/**
+ * JT/T 808 0x0704 — batch location upload.
+ * Body: WORD itemCount; BYTE locationType; then per item WORD len + len bytes (0x0200-style + optional attachment).
+ */
+function decode0704(body) {
+  if (!body || body.length < 5) {
+    return { type: "0x0704", error: "body too short", bodyLen: body?.length || 0, bodyHex: body?.toString("hex") };
+  }
+  const itemCount = body.readUInt16BE(0);
+  const locationType = body[2];
+  const typeLabel =
+    locationType === 0 ? "normal_batch" : locationType === 1 ? "blind_spot_supplement" : `type_${locationType}`;
+  const items = [];
+  let o = 3;
+  const maxItems = Math.min(itemCount, 256);
+  for (let i = 0; i < maxItems; i++) {
+    if (o + 2 > body.length) {
+      items.push({ index: i, error: "truncated_before_len" });
+      break;
+    }
+    const len = body.readUInt16BE(o);
+    o += 2;
+    if (len < 0 || o + len > body.length) {
+      items.push({ index: i, error: "bad_item_len", len, remaining: body.length - o });
+      break;
+    }
+    const slice = body.subarray(o, o + len);
+    o += len;
+    let location = null;
+    if (slice.length >= 28) {
+      location = decode0200(slice.subarray(0, 28));
+    } else {
+      location = { error: "item shorter than 28B", itemLen: slice.length };
+    }
+    items.push({
+      index: i,
+      locationDataLen: len,
+      location,
+      attachmentHex: slice.length > 28 ? slice.subarray(28).toString("hex") : null,
+    });
+    if (o >= body.length) break;
+  }
+  return {
+    type: "0x0704",
+    itemCount,
+    locationType,
+    locationTypeLabel: typeLabel,
+    parsedItems: items.length,
+    items,
+    remainderBytes: body.length - o,
+  };
+}
+
+/** Vendor 0x1003 — often BSJ; core JT808 does not define layout (avoid guessing TLV). */
+function decode1003(body) {
+  if (!body || !body.length) {
+    return { type: "0x1003", note: "vendor_extension", bodyHex: "" };
+  }
+  const bytes = Array.from(body, (b) => `0x${b.toString(16).padStart(2, "0")}`);
+  return {
+    type: "0x1003",
+    note: "vendor_extension_bsj_or_similar",
+    bodyLen: body.length,
+    bodyHex: body.toString("hex"),
+    bytes,
+  };
+}
+
 function decode0200(body) {
   if (!body || body.length < 28) return { error: "0x0200 body too short", len: body?.length };
   return {
@@ -153,6 +221,10 @@ function decodeMessage(msgId, body, terminalPhoneBuf) {
       return { ...base, name: "terminal_auth", detail: { bodyHex: body.toString("hex") } };
     case MSG.LOCATION_REPORT:
       return { ...base, name: "location", detail: decode0200(body) };
+    case MSG.LOCATION_BATCH:
+      return { ...base, name: "location_batch", detail: decode0704(body) };
+    case MSG.VENDOR_EXTENSION_1003:
+      return { ...base, name: "vendor_ext_1003", detail: decode1003(body) };
     case MSG.TERMINAL_GENERAL_RESPONSE: {
       if (body.length < 5) return { ...base, name: "terminal_general_response", detail: { raw: body.toString("hex") } };
       return {
@@ -181,6 +253,8 @@ function decodeMessage(msgId, body, terminalPhoneBuf) {
 module.exports = {
   decodeMessage,
   decode0100,
+  decode0704,
+  decode1003,
   decode9101,
   encode9101,
   decode9102,
