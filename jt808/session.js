@@ -106,15 +106,20 @@ class Jt808TcpSession {
       parsed.msgId === MSG.TERMINAL_AUTH;
     if (autoStream) {
       this._auto9101Sent = true;
+      const host = String(this.opts.mediaPublicHost || "");
+      const tcp = this.opts.mediaTcpPort;
+      const udp = this.opts.mediaUdpPort;
       const ok = this.sendRealtimeAvRequest9101({
-        serverIPAddr: this.opts.mediaPublicHost,
-        tcpPort: this.opts.mediaTcpPort,
-        udpPort: this.opts.mediaUdpPort,
+        serverIPAddr: host,
+        tcpPort: tcp,
+        udpPort: udp,
         channelNo: this.opts.streamChannelNo != null ? this.opts.streamChannelNo : 1,
         dataType: this.opts.streamDataType != null ? this.opts.streamDataType : 1,
         streamType: this.opts.streamStreamType != null ? this.opts.streamStreamType : 0,
       });
-      this.opts.log?.info?.(`[jt808] ${this.remote} auto 0x9101 (JT808-${this.opts.protocolYear || "2013"} framing) sent=${ok}`);
+      this.opts.log?.info?.(
+        `[jt808] ${this.remote} auto 0x9101 sent=${ok} → device should open media TCP to ${host}:${tcp} (udp=${udp}; must be your public IP/DNS, not 0.0.0.0)`
+      );
     }
   }
 
