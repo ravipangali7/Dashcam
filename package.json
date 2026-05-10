@@ -1,0 +1,16 @@
+{
+  "name": "dashcam-tcp-listener",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Simple TCP listener",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
