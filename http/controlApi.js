@@ -31,6 +31,7 @@ function json(res, code, obj) {
  * @param {object} ctx
  * @param {Map<string, import('../jt808/session').Jt808TcpSession>} ctx.sessionsByPhone
  * @param {() => { host: string, tcpPort: number, udpPort: number }} ctx.mediaEndpoint
+ * @param {() => { rtsp: string, hls?: string } | null} [ctx.getMediamtxPlaybackHints]
  */
 function startControlApi(port, host, log, ctx) {
   const server = http.createServer(async (req, res) => {
@@ -56,11 +57,13 @@ function startControlApi(port, host, log, ctx) {
           dataType: body.dataType != null ? Number(body.dataType) : 1,
           streamType: body.streamType != null ? Number(body.streamType) : 0,
         });
+        const hints = ctx.getMediamtxPlaybackHints?.() || null;
         return json(res, ok ? 200 : 500, {
           ok,
           sent: "0x9101",
           to: phone12,
           media: { host: body.mediaHost || ep.host, tcp: body.tcpPort ?? ep.tcpPort, udp: body.udpPort ?? ep.udpPort },
+          ...(hints ? { mediamtx: hints } : {}),
         });
       }
       if (req.method === "POST" && req.url === "/jt808/stream/stop") {
@@ -79,6 +82,7 @@ function startControlApi(port, host, log, ctx) {
         return json(res, ok ? 200 : 500, { ok, sent: "0x9102", to: phone12 });
       }
       if (req.method === "GET" && req.url === "/jt808/help") {
+        const hints = ctx.getMediamtxPlaybackHints?.() || null;
         return json(res, 200, {
           endpoints: [
             "GET /health",
@@ -86,6 +90,7 @@ function startControlApi(port, host, log, ctx) {
             "POST /jt808/stream/stop JSON { phone, channelNo?, controlCmd? (0=close), closeAudioVideoData?, streamType? }",
           ],
           msgIds: { "0x9101": MSG.REALTIME_AV_REQUEST, "0x9102": MSG.REALTIME_AV_CONTROL },
+          ...(hints ? { mediamtxPlayback: hints, note: "VLC: Open Network Stream → mediamtx.rtsp after publisher is up" } : {}),
         });
       }
       json(res, 404, { error: "not found" });

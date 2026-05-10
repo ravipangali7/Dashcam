@@ -5,7 +5,10 @@
   "description": "Simple TCP listener",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "mediamtx:up": "docker compose up -d mediamtx",
+    "mediamtx:down": "docker compose down",
+    "mediamtx:logs": "docker compose logs -f mediamtx"
   },
   "dependencies": {
     "dotenv": "^16.4.5"

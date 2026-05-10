@@ -1,0 +1,27 @@
+# MediaMTX — RTSP gateway for viewers (VLC, ffplay, etc.).
+# Run: docker compose up -d (from repo root) or install the mediamtx binary with -config ./mediamtx/mediamtx.yml
+#
+# Device media still lands on Node (MEDIA_PORT / 0x9101). When MEDIAMTX_FFMPEG_ENABLED=true,
+# Node pipes that TCP payload into ffmpeg, which publishes here as RTSP.
+
+logLevel: info
+logDestinations: [stdout]
+
+rtsp: true
+rtspAddress: :8554
+# TCP-only RTSP avoids opening UDP 8000/8001 on your firewall for playback.
+rtspTransports: [tcp]
+
+hls: true
+hlsAddress: :8888
+
+rtmp: false
+webrtc: false
+srt: false
+
+pathDefaults:
+  source: publisher
+  overridePublisher: true
+
+paths:
+  dashcam:

@@ -20,6 +20,20 @@ const AUTO_REPLY_REGISTER = String(process.env.AUTO_REPLY_REGISTER || "").toLowe
 const AUTO_PLATFORM_ACK = String(process.env.AUTO_PLATFORM_GENERAL_ACK || "").toLowerCase() === "true";
 const REGISTER_AUTH_CODE = process.env.REGISTER_AUTH_CODE || "AUTH";
 const MEDIA_RECORD_DIR = process.env.MEDIA_RECORD_DIR || "";
+const MEDIAMTX_FFMPEG_ENABLED =
+  String(process.env.MEDIAMTX_FFMPEG_ENABLED || "").toLowerCase() === "true";
+const MEDIAMTX_PUBLISH_URL =
+  process.env.MEDIAMTX_PUBLISH_URL || "rtsp://127.0.0.1:8554/dashcam";
+const MEDIAMTX_FFMPEG_BIN =
+  process.env.MEDIAMTX_FFMPEG_BIN || process.env.FFMPEG_PATH || "ffmpeg";
+const MEDIAMTX_FFMPEG_INPUT_FORMAT = (process.env.MEDIAMTX_FFMPEG_INPUT_FORMAT || "").trim();
+const MEDIAMTX_PATH = (process.env.MEDIAMTX_PATH || "dashcam").replace(/^\//, "");
+const MEDIAMTX_RTSP_PORT = Number(process.env.MEDIAMTX_RTSP_PORT) || 8554;
+const MEDIAMTX_HLS_PORT = Number(process.env.MEDIAMTX_HLS_PORT) || 8888;
+const MEDIAMTX_PLAYBACK_URL = (process.env.MEDIAMTX_PLAYBACK_URL || "").trim();
+const MEDIAMTX_PLAYBACK_HOST = (process.env.MEDIAMTX_PLAYBACK_HOST || "").trim();
+const MEDIAMTX_PLAYBACK_HINTS =
+  String(process.env.MEDIAMTX_PLAYBACK_HINTS || "").toLowerCase() === "true";
 const AUTO_STREAM_9101 = String(process.env.AUTO_STREAM_9101 || "").toLowerCase() === "true";
 const STREAM_CHANNEL_NO = Number(process.env.STREAM_CHANNEL_NO) || 1;
 const STREAM_DATA_TYPE = Number(process.env.STREAM_DATA_TYPE) || 1;
@@ -29,6 +43,46 @@ const log = {
   info: (...a) => console.log(new Date().toISOString(), ...a),
   warn: (...a) => console.warn(new Date().toISOString(), ...a),
 };
+
+function splitPipeDelimitedArgs(s) {
+  if (!s || !String(s).trim()) return [];
+  return String(s)
+    .split("|")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+const ffmpegMediamtxOpts = MEDIAMTX_FFMPEG_ENABLED
+  ? {
+      ffmpegBin: MEDIAMTX_FFMPEG_BIN,
+      publishUrl: MEDIAMTX_PUBLISH_URL,
+      inputFormat: MEDIAMTX_FFMPEG_INPUT_FORMAT || undefined,
+      extraArgsBeforeInput: (() => {
+        const a = splitPipeDelimitedArgs(process.env.MEDIAMTX_FFMPEG_EXTRA_BEFORE_INPUT || "");
+        return a.length ? a : undefined;
+      })(),
+    }
+  : null;
+
+function getMediamtxPlaybackHints() {
+  const wantHints =
+    MEDIAMTX_FFMPEG_ENABLED || !!MEDIAMTX_PLAYBACK_URL || MEDIAMTX_PLAYBACK_HINTS;
+  if (!wantHints) return null;
+  const rtsp =
+    MEDIAMTX_PLAYBACK_URL ||
+    (() => {
+      const host = MEDIAMTX_PLAYBACK_HOST || MEDIA_PUBLIC_HOST;
+      if (!host || host === "0.0.0.0") return "";
+      return `rtsp://${host}:${MEDIAMTX_RTSP_PORT}/${MEDIAMTX_PATH}`;
+    })();
+  if (!rtsp) return null;
+  const host = MEDIAMTX_PLAYBACK_HOST || MEDIA_PUBLIC_HOST;
+  const hls =
+    host && host !== "0.0.0.0"
+      ? `http://${host}:${MEDIAMTX_HLS_PORT}/${MEDIAMTX_PATH}/index.m3u8`
+      : null;
+  return { rtsp, ...(hls ? { hls } : {}) };
+}
 
 /** @type {Map<string, import('./jt808/session').Jt808TcpSession>} */
 const sessionsByPhone = new Map();
@@ -105,7 +159,16 @@ jt808Server.listen(PORT, HOST, async () => {
   }
 
   try {
-    await startMediaTcpServer(MEDIA_PORT, MEDIA_HOST, log, MEDIA_RECORD_DIR || null);
+    await startMediaTcpServer(MEDIA_PORT, MEDIA_HOST, log, {
+      recordDir: MEDIA_RECORD_DIR || null,
+      ffmpegMediamtx: ffmpegMediamtxOpts,
+    });
+    if (MEDIAMTX_FFMPEG_ENABLED) {
+      const h = getMediamtxPlaybackHints();
+      log.info(
+        `[mediamtx] ffmpeg bridge on (publish ${MEDIAMTX_PUBLISH_URL})${h ? `; playback ${JSON.stringify(h)}` : "; set MEDIAMTX_PLAYBACK_URL or MEDIAMTX_PLAYBACK_HINTS for VLC URLs"}`
+      );
+    }
   } catch (e) {
     log.warn(`[media] failed to bind: ${e.message}`);
   }
@@ -119,6 +182,7 @@ jt808Server.listen(PORT, HOST, async () => {
           tcpPort: MEDIA_PORT,
           udpPort: MEDIA_UDP_PORT,
         }),
+        getMediamtxPlaybackHints,
       });
     } catch (e) {
       log.warn(`[http] failed to bind: ${e.message}`);

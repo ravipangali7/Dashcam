@@ -1,13 +1,19 @@
 const net = require("node:net");
 const { debug, hexPreview } = require("../debugLog");
-const { MediaRecordSink } = require("./jt1078Sink");
+const { createMediaPipelineSink } = require("./sinkFactory");
 
-function startMediaTcpServer(port, host, log, recordDir) {
+/**
+ * @param {number} port
+ * @param {string} host
+ * @param {{ info: Function, warn: Function }} log
+ * @param {{ recordDir?: string|null, ffmpegMediamtx?: { ffmpegBin: string, publishUrl: string, inputFormat?: string, extraArgsBeforeInput?: string[] }|null }} sinkOpts
+ */
+function startMediaTcpServer(port, host, log, sinkOpts) {
   const srv = net.createServer((socket) => {
     const remote = `${socket.remoteAddress}:${socket.remotePort}`;
     log.info(`[media] connect ${remote}`);
     debug(`[media] socket ${remote} connect`);
-    const sink = new MediaRecordSink(remote, { log, recordDir });
+    const sink = createMediaPipelineSink(remote, { log, ...sinkOpts });
     let mediaChunks = 0;
     socket.on("data", (buf) => {
       mediaChunks += 1;
