@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const net = require("node:net");
+const { isDebugEnabled, debug, hexPreview } = require("./debugLog");
 const { Jt808TcpSession } = require("./jt808/session");
 const { startMediaTcpServer } = require("./media/server");
 const { startControlApi } = require("./http/controlApi");
@@ -37,6 +38,11 @@ function unregisterSession(sess) {
   if (sess.terminalPhone) sessionsByPhone.delete(sess.terminalPhone);
 }
 
+/** Normal when scanners or clients drop the link; not a protocol decode failure. */
+function isBenignSocketEnd(code) {
+  return code === "ECONNRESET" || code === "EPIPE" || code === "ETIMEDOUT" || code === "ECONNABORTED";
+}
+
 const jt808Server = net.createServer((socket) => {
   const remote = `${socket.remoteAddress}:${socket.remotePort}`;
   log.info(`[jt808] client ${remote}`);
@@ -54,14 +60,22 @@ const jt808Server = net.createServer((socket) => {
   });
 
   socket.setNoDelay(true);
-  socket.on("data", (chunk) => session.feed(chunk));
+  socket.on("data", (chunk) => {
+    debug(`[jt808] rx ${remote} +${chunk.length} B`, hexPreview(chunk, 48));
+    session.feed(chunk);
+  });
   socket.on("end", () => {
     unregisterSession(session);
+    debug(`[jt808] end ${remote} rxBytes=${session._rxBytes}`);
     log.info(`[jt808] disconnected ${remote}`);
   });
   socket.on("error", (err) => {
     unregisterSession(session);
-    log.warn(`[jt808] socket error ${remote}: ${err.message}`);
+    if (isBenignSocketEnd(err.code)) {
+      log.info(`[jt808] peer closed ${remote} (${err.code})`);
+    } else {
+      log.warn(`[jt808] socket error ${remote}: ${err.message}`);
+    }
   });
 });
 
@@ -73,6 +87,9 @@ jt808Server.on("error", (err) => {
 jt808Server.listen(PORT, HOST, async () => {
   const a = jt808Server.address();
   log.info(`[jt808] TCP (signalling) on ${a.address}:${a.port} protocol=${JT808_PROTOCOL}`);
+  if (isDebugEnabled()) {
+    log.info("[jt808] verbose debug logging on (set DEBUG=1 or JT808_DEBUG=true in .env)");
+  }
 
   try {
     await startMediaTcpServer(MEDIA_PORT, MEDIA_HOST, log, MEDIA_RECORD_DIR || null);

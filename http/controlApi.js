@@ -1,4 +1,5 @@
 const http = require("node:http");
+const { debug } = require("../debugLog");
 const { MSG } = require("../jt808/messages");
 
 function readJsonBody(req) {
@@ -34,11 +35,13 @@ function json(res, code, obj) {
 function startControlApi(port, host, log, ctx) {
   const server = http.createServer(async (req, res) => {
     try {
+      debug(`[http] ${req.method} ${req.url}`);
       if (req.method === "GET" && req.url === "/health") {
         return json(res, 200, { ok: true, sessions: ctx.sessionsByPhone.size });
       }
       if (req.method === "POST" && req.url === "/jt808/stream/request") {
         const body = await readJsonBody(req);
+        debug("[http] /jt808/stream/request body:", body);
         const phone = String(body.phone || "").replace(/\D/g, "");
         if (phone.length < 6) return json(res, 400, { error: "phone required (6–12 digits)" });
         const phone12 = phone.length > 12 ? phone.slice(-12) : phone.padStart(12, "0");
@@ -62,6 +65,7 @@ function startControlApi(port, host, log, ctx) {
       }
       if (req.method === "POST" && req.url === "/jt808/stream/stop") {
         const body = await readJsonBody(req);
+        debug("[http] /jt808/stream/stop body:", body);
         const phone = String(body.phone || "").replace(/\D/g, "");
         const phone12 = phone.length > 12 ? phone.slice(-12) : phone.padStart(12, "0");
         const sess = ctx.sessionsByPhone.get(phone12);
