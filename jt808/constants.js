@@ -3,6 +3,8 @@
 exports.MSG = {
   TERMINAL_GENERAL_RESPONSE: 0x0001,
   HEARTBEAT: 0x0002,
+  /** Terminal logout / unregister (JT/T 808 终端注销), body often empty */
+  TERMINAL_LOGOUT: 0x0003,
   TERMINAL_REGISTER: 0x0100,
   TERMINAL_AUTH: 0x0102,
   LOCATION_REPORT: 0x0200,

@@ -141,6 +141,12 @@ function decodeMessage(msgId, body, terminalPhoneBuf) {
   switch (msgId) {
     case MSG.HEARTBEAT:
       return { ...base, name: "heartbeat", detail: {} };
+    case MSG.TERMINAL_LOGOUT:
+      return {
+        ...base,
+        name: "terminal_logout",
+        detail: { bodyLen: body.length, bodyHex: body.length ? body.toString("hex") : "" },
+      };
     case MSG.TERMINAL_REGISTER:
       return { ...base, name: "terminal_register", detail: decode0100(body) };
     case MSG.TERMINAL_AUTH:
