@@ -164,7 +164,11 @@ function decodeMessage(msgId, body, terminalPhoneBuf) {
     case MSG.REALTIME_AV_CONTROL:
       return { ...base, name: "realtime_av_control", detail: decode9102(body) };
     default:
-      return { ...base, name: "unknown", detail: { bodyHex: body.toString("hex") } };
+      return {
+        ...base,
+        name: "unknown",
+        detail: { bodyLen: body.length, bodyHex: body.length ? body.toString("hex") : "" },
+      };
   }
 }
 

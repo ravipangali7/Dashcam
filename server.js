@@ -55,7 +55,9 @@ const jt808Server = net.createServer((socket) => {
     log,
     onMessage(sess, parsed, decoded) {
       registerSession(sess);
-      log.info(`[jt808] ${remote} ${decoded.name} ${JSON.stringify(decoded.detail)}`);
+      log.info(
+        `[jt808] ${remote} ${decoded.msgId} phone=${decoded.phone} ${decoded.name} ${JSON.stringify(decoded.detail)}`
+      );
     },
   });
 
