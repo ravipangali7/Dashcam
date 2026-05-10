@@ -172,19 +172,59 @@ function decode0704(body) {
   };
 }
 
-/** Vendor 0x1003 — often BSJ; core JT808 does not define layout (avoid guessing TLV). */
+const SAMPLING_RATE_LABEL = ["8_kHz", "22_05_kHz", "44_1_kHz", "48_kHz"];
+const SAMPLING_BITS_LABEL = ["8_bit", "16_bit", "32_bit"];
+
+/**
+ * JT/T 1078 0x1003 — terminal uploads audio/video attributes (binary layout per common stacks / middleware docs).
+ * Layout (10 B): audioCoding, inputChlNum, samplingRate, samplingNum, frameLen(WORD BE), output, videoCoding, maxAudioChl, maxVideoChl.
+ */
 function decode1003(body) {
   if (!body || !body.length) {
-    return { type: "0x1003", note: "vendor_extension", bodyHex: "" };
+    return { type: "0x1003", standard: "JT/T 1078", bodyHex: "", note: "empty body" };
   }
-  const bytes = Array.from(body, (b) => `0x${b.toString(16).padStart(2, "0")}`);
-  return {
+  const base = {
     type: "0x1003",
-    note: "vendor_extension_bsj_or_similar",
+    standard: "JT/T 1078",
     bodyLen: body.length,
     bodyHex: body.toString("hex"),
-    bytes,
   };
+  if (body.length < 10) {
+    return {
+      ...base,
+      note: "body shorter than common 10-byte AV-attribute layout",
+      bytes: Array.from(body, (b) => `0x${b.toString(16).padStart(2, "0")}`),
+    };
+  }
+  const audioCoding = body[0];
+  const inputChlNum = body[1];
+  const samplingRate = body[2];
+  const samplingNum = body[3];
+  const audioFrameLen = body.readUInt16BE(4);
+  const audioOutput = body[6];
+  const videoCoding = body[7];
+  const maxAudioChlNum = body[8];
+  const maxVideoChlNum = body[9];
+  const out = {
+    ...base,
+    audioCoding,
+    inputChlNum,
+    samplingRate,
+    samplingRateLabel: SAMPLING_RATE_LABEL[samplingRate] || `rate_${samplingRate}`,
+    samplingNum,
+    samplingNumLabel: SAMPLING_BITS_LABEL[samplingNum] || `bits_${samplingNum}`,
+    audioFrameLen,
+    audioOutput,
+    audioOutputLabel: audioOutput ? "supported" : "not_supported",
+    videoCoding,
+    maxAudioChlNum,
+    maxVideoChlNum,
+  };
+  if (body.length > 10) {
+    out.extraHex = body.subarray(10).toString("hex");
+    out.note = "parsed first 10 B; trailing bytes in extraHex";
+  }
+  return out;
 }
 
 function decode0200(body) {
@@ -223,8 +263,8 @@ function decodeMessage(msgId, body, terminalPhoneBuf) {
       return { ...base, name: "location", detail: decode0200(body) };
     case MSG.LOCATION_BATCH:
       return { ...base, name: "location_batch", detail: decode0704(body) };
-    case MSG.VENDOR_EXTENSION_1003:
-      return { ...base, name: "vendor_ext_1003", detail: decode1003(body) };
+    case MSG.TERMINAL_AV_ATTRIBUTES:
+      return { ...base, name: "terminal_av_attributes", detail: decode1003(body) };
     case MSG.TERMINAL_GENERAL_RESPONSE: {
       if (body.length < 5) return { ...base, name: "terminal_general_response", detail: { raw: body.toString("hex") } };
       return {
