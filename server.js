@@ -20,6 +20,10 @@ const AUTO_REPLY_REGISTER = String(process.env.AUTO_REPLY_REGISTER || "").toLowe
 const AUTO_PLATFORM_ACK = String(process.env.AUTO_PLATFORM_GENERAL_ACK || "").toLowerCase() === "true";
 const REGISTER_AUTH_CODE = process.env.REGISTER_AUTH_CODE || "AUTH";
 const MEDIA_RECORD_DIR = process.env.MEDIA_RECORD_DIR || "";
+const AUTO_STREAM_9101 = String(process.env.AUTO_STREAM_9101 || "").toLowerCase() === "true";
+const STREAM_CHANNEL_NO = Number(process.env.STREAM_CHANNEL_NO) || 1;
+const STREAM_DATA_TYPE = Number(process.env.STREAM_DATA_TYPE) || 1;
+const STREAM_STREAM_TYPE = Number(process.env.STREAM_STREAM_TYPE) || 0;
 
 const log = {
   info: (...a) => console.log(new Date().toISOString(), ...a),
@@ -52,6 +56,13 @@ const jt808Server = net.createServer((socket) => {
     autoReplyRegister: AUTO_REPLY_REGISTER,
     autoPlatformGeneralAck: AUTO_PLATFORM_ACK,
     registerAuthCode: REGISTER_AUTH_CODE,
+    autoStream9101: AUTO_STREAM_9101,
+    mediaPublicHost: MEDIA_PUBLIC_HOST,
+    mediaTcpPort: MEDIA_PORT,
+    mediaUdpPort: MEDIA_UDP_PORT,
+    streamChannelNo: STREAM_CHANNEL_NO,
+    streamDataType: STREAM_DATA_TYPE,
+    streamStreamType: STREAM_STREAM_TYPE,
     log,
     onMessage(sess, parsed, decoded) {
       registerSession(sess);

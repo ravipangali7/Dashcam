@@ -17,6 +17,8 @@ class Jt808TcpSession {
     /** @type {string|null} */
     this.terminalPhone = null;
     this._rxBytes = 0;
+    /** @type {boolean} */
+    this._auto9101Sent = false;
   }
 
   nextSerial() {
@@ -57,7 +59,7 @@ class Jt808TcpSession {
   }
 
   /**
-   * JT/T 1078 — real-time AV transmission request (terminal opens media session to given host/ports).
+   * 0x9101 real-time AV transmission request (multimedia extension body; JT808-2013 framing on the wire).
    */
   sendRealtimeAvRequest9101(fields) {
     return this.sendFrame(MSG.REALTIME_AV_REQUEST, encode9101(fields));
@@ -95,6 +97,24 @@ class Jt808TcpSession {
     const autoAck = this.opts.autoPlatformGeneralAck;
     if (autoAck && wantsGeneralAck(parsed.msgId)) {
       this.sendPlatformGeneralResponse(parsed.msgSerial, parsed.msgId, 0);
+    }
+
+    const autoStream =
+      this.opts.autoStream9101 &&
+      parsed.ok &&
+      !this._auto9101Sent &&
+      parsed.msgId === MSG.TERMINAL_AUTH;
+    if (autoStream) {
+      this._auto9101Sent = true;
+      const ok = this.sendRealtimeAvRequest9101({
+        serverIPAddr: this.opts.mediaPublicHost,
+        tcpPort: this.opts.mediaTcpPort,
+        udpPort: this.opts.mediaUdpPort,
+        channelNo: this.opts.streamChannelNo != null ? this.opts.streamChannelNo : 1,
+        dataType: this.opts.streamDataType != null ? this.opts.streamDataType : 1,
+        streamType: this.opts.streamStreamType != null ? this.opts.streamStreamType : 0,
+      });
+      this.opts.log?.info?.(`[jt808] ${this.remote} auto 0x9101 (JT808-${this.opts.protocolYear || "2013"} framing) sent=${ok}`);
     }
   }
 

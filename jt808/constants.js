@@ -1,4 +1,8 @@
-/** JT/T 808 message IDs (subset). Video control IDs are from JT/T 1078 extension over 808. */
+/**
+ * JT/T 808 message IDs (subset).
+ * Multimedia commands 0x9101/0x9102 use the same JT808 framing (e.g. 2013 header + escape + checksum);
+ * they are not a separate “signalling protocol” on this TCP link.
+ */
 
 exports.MSG = {
   TERMINAL_GENERAL_RESPONSE: 0x0001,
@@ -10,10 +14,12 @@ exports.MSG = {
   LOCATION_REPORT: 0x0200,
   /** Batch / supplementary positioning data upload */
   LOCATION_BATCH: 0x0704,
-  /** JT/T 1078 — terminal → platform AV capability / attribute report */
+  /** 0x1003 terminal AV capability report (common JT/T 1078-style body; still JT808-framed) */
   TERMINAL_AV_ATTRIBUTES: 0x1003,
   PLATFORM_GENERAL_RESPONSE: 0x8001,
   REGISTER_RESPONSE: 0x8100,
+  /** Real-time AV transmission request — multimedia extension, carried in JT808-2013 frames */
   REALTIME_AV_REQUEST: 0x9101,
+  /** Real-time AV transmission control — multimedia extension, carried in JT808-2013 frames */
   REALTIME_AV_CONTROL: 0x9102,
 };

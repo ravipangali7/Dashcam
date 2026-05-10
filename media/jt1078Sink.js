@@ -2,10 +2,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 /**
- * JT/T 1078 media is usually RTP (PS/H.264) over a separate TCP/UDP session from JT808.
- * This sink records raw bytes and prints light-weight stats for integration / debugging.
+ * Raw media TCP sink (bytes after terminal obeys 0x9101). Payload may be RTP/PS/H.264 per device.
+ * Optional recording to disk for ffmpeg/VLC; no demux in-process.
  */
-class Jt1078MediaSink {
+class MediaRecordSink {
   constructor(remoteLabel, options) {
     this.remoteLabel = remoteLabel;
     this.options = options || {};
@@ -22,7 +22,7 @@ class Jt1078MediaSink {
           `media_${remoteLabel.replace(/[:\\/?*]/g, "_")}_${Date.now()}.bin`
         );
         this._file = fs.createWriteStream(fname);
-        this.options.log?.info?.(`JT1078 recording to ${fname}`);
+        this.options.log?.info?.(`[media] recording to ${fname}`);
       } catch (e) {
         this.options.log?.warn?.(`record dir failed: ${e.message}`);
       }
@@ -36,7 +36,7 @@ class Jt1078MediaSink {
     const every = this.options.logEveryBytes || 256 * 1024;
     if (this.bytes % every < buf.length || this.chunks === 1) {
       this.options.log?.info?.(
-        `[media ${this.remoteLabel}] ${(this.bytes / 1024).toFixed(1)} KiB in ${this.chunks} chunks (JT1078 RTP demux not applied)`
+        `[media ${this.remoteLabel}] ${(this.bytes / 1024).toFixed(1)} KiB in ${this.chunks} chunks (no in-process demux)`
       );
     }
   }
@@ -50,4 +50,7 @@ class Jt1078MediaSink {
   }
 }
 
-module.exports = { Jt1078MediaSink };
+/** @deprecated use MediaRecordSink */
+const Jt1078MediaSink = MediaRecordSink;
+
+module.exports = { MediaRecordSink, Jt1078MediaSink };
