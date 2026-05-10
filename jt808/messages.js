@@ -89,6 +89,36 @@ function encode8100(responseSerial, result, authCode) {
   ]);
 }
 
+/** JT/T 808-2013 0x0100 terminal register (fixed fields + trailing vehicle identifier, often GBK). */
+function decode0100(body) {
+  if (!body || body.length < 37) {
+    return { error: "0x0100 body too short", len: body?.length, bodyHex: body?.toString("hex") };
+  }
+  const provinceId = body.readUInt16BE(0);
+  const cityId = body.readUInt16BE(2);
+  const manufacturer = body.subarray(4, 9).toString("ascii").replace(/\0/g, "");
+  const model = body.subarray(9, 29).toString("ascii").replace(/\0+$/g, "");
+  const terminalId = body.subarray(29, 36).toString("ascii").replace(/\0/g, "");
+  const plateColor = body[36];
+  const vehicleTail = body.subarray(37);
+  const vehicleHex = vehicleTail.length ? vehicleTail.toString("hex") : null;
+  let vehicleNote = vehicleTail.length ? "raw tail (often GBK plate; decode with GBK if needed)" : null;
+  if (vehicleTail.length && vehicleTail.every((b) => b >= 0x20 && b <= 0x7e)) {
+    vehicleNote = vehicleTail.toString("ascii").replace(/\0/g, "");
+  }
+  return {
+    type: "0x0100",
+    provinceId,
+    cityId,
+    manufacturer,
+    model,
+    terminalId,
+    plateColor,
+    vehicleTailHex: vehicleHex,
+    vehicleNote,
+  };
+}
+
 function decode0200(body) {
   if (!body || body.length < 28) return { error: "0x0200 body too short", len: body?.length };
   return {
@@ -112,7 +142,7 @@ function decodeMessage(msgId, body, terminalPhoneBuf) {
     case MSG.HEARTBEAT:
       return { ...base, name: "heartbeat", detail: {} };
     case MSG.TERMINAL_REGISTER:
-      return { ...base, name: "terminal_register", detail: { bodyHex: body.toString("hex") } };
+      return { ...base, name: "terminal_register", detail: decode0100(body) };
     case MSG.TERMINAL_AUTH:
       return { ...base, name: "terminal_auth", detail: { bodyHex: body.toString("hex") } };
     case MSG.LOCATION_REPORT:
@@ -140,6 +170,7 @@ function decodeMessage(msgId, body, terminalPhoneBuf) {
 
 module.exports = {
   decodeMessage,
+  decode0100,
   decode9101,
   encode9101,
   decode9102,
