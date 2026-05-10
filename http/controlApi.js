@@ -31,7 +31,7 @@ function json(res, code, obj) {
  * @param {object} ctx
  * @param {Map<string, import('../jt808/session').Jt808TcpSession>} ctx.sessionsByPhone
  * @param {() => { host: string, tcpPort: number, udpPort: number }} ctx.mediaEndpoint
- * @param {() => { rtsp: string, hls?: string } | null} [ctx.getMediamtxPlaybackHints]
+ * @param {(phone12?: string) => Record<string, string> | null} [ctx.getMediamtxPlaybackHints]
  */
 function startControlApi(port, host, log, ctx) {
   const server = http.createServer(async (req, res) => {
@@ -57,7 +57,7 @@ function startControlApi(port, host, log, ctx) {
           dataType: body.dataType != null ? Number(body.dataType) : 1,
           streamType: body.streamType != null ? Number(body.streamType) : 0,
         });
-        const hints = ctx.getMediamtxPlaybackHints?.() || null;
+        const hints = ctx.getMediamtxPlaybackHints?.(phone12) ?? ctx.getMediamtxPlaybackHints?.() ?? null;
         return json(res, ok ? 200 : 500, {
           ok,
           sent: "0x9101",

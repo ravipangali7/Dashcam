@@ -6,14 +6,18 @@ const { createMediaPipelineSink } = require("./sinkFactory");
  * @param {number} port
  * @param {string} host
  * @param {{ info: Function, warn: Function }} log
- * @param {{ recordDir?: string|null, ffmpegMediamtx?: { ffmpegBin: string, publishUrl: string, inputFormat?: string, extraArgsBeforeInput?: string[] }|null }} sinkOpts
+ * @param {{ recordDir?: string|null, ffmpegMediamtx?: { ffmpegBin: string, publishUrl: string, inputFormat?: string, extraArgsBeforeInput?: string[] }|null, buildFfmpegMediamtx?: (s: import('net').Socket) => { ffmpegBin: string, publishUrl: string, inputFormat?: string, extraArgsBeforeInput?: string[] }|null }} sinkOpts
  */
 function startMediaTcpServer(port, host, log, sinkOpts) {
   const srv = net.createServer((socket) => {
     const remote = `${socket.remoteAddress}:${socket.remotePort}`;
     log.info(`[media] connect ${remote}`);
     debug(`[media] socket ${remote} connect`);
-    const sink = createMediaPipelineSink(remote, { log, ...sinkOpts });
+    const ff =
+      typeof sinkOpts.buildFfmpegMediamtx === "function"
+        ? sinkOpts.buildFfmpegMediamtx(socket)
+        : sinkOpts.ffmpegMediamtx;
+    const sink = createMediaPipelineSink(remote, { log, recordDir: sinkOpts.recordDir, ffmpegMediamtx: ff });
     let mediaChunks = 0;
     socket.on("data", (buf) => {
       mediaChunks += 1;

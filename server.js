@@ -5,6 +5,8 @@ const { isDebugEnabled, debug, hexPreview } = require("./debugLog");
 const { Jt808TcpSession } = require("./jt808/session");
 const { startMediaTcpServer } = require("./media/server");
 const { startControlApi } = require("./http/controlApi");
+const { MediaSourceRegistry } = require("./media/mediaSourceRegistry");
+const { resolvePublishUrlMode, expandTemplate, expandPathTemplate } = require("./media/publishUrl");
 
 const PORT = Number(process.env.PORT) || 9000;
 const HOST = process.env.HOST || "0.0.0.0";
@@ -22,8 +24,6 @@ const REGISTER_AUTH_CODE = process.env.REGISTER_AUTH_CODE || "AUTH";
 const MEDIA_RECORD_DIR = process.env.MEDIA_RECORD_DIR || "";
 const MEDIAMTX_FFMPEG_ENABLED =
   String(process.env.MEDIAMTX_FFMPEG_ENABLED || "").toLowerCase() === "true";
-const MEDIAMTX_PUBLISH_URL =
-  process.env.MEDIAMTX_PUBLISH_URL || "rtsp://127.0.0.1:8554/dashcam";
 const MEDIAMTX_FFMPEG_BIN =
   process.env.MEDIAMTX_FFMPEG_BIN || process.env.FFMPEG_PATH || "ffmpeg";
 const MEDIAMTX_FFMPEG_INPUT_FORMAT = (process.env.MEDIAMTX_FFMPEG_INPUT_FORMAT || "").trim();
@@ -34,6 +34,9 @@ const MEDIAMTX_PLAYBACK_URL = (process.env.MEDIAMTX_PLAYBACK_URL || "").trim();
 const MEDIAMTX_PLAYBACK_HOST = (process.env.MEDIAMTX_PLAYBACK_HOST || "").trim();
 const MEDIAMTX_PLAYBACK_HINTS =
   String(process.env.MEDIAMTX_PLAYBACK_HINTS || "").toLowerCase() === "true";
+const MEDIAMTX_PLAYBACK_URL_TEMPLATE = (process.env.MEDIAMTX_PLAYBACK_URL_TEMPLATE || "").trim();
+const MEDIAMTX_PLAYBACK_PATH_TEMPLATE = (process.env.MEDIAMTX_PLAYBACK_PATH_TEMPLATE || "dashcam/{phone}").trim();
+const MEDIAMTX_UNKNOWN_PHONE_LABEL = (process.env.MEDIAMTX_UNKNOWN_PHONE_LABEL || "unknown").trim() || "unknown";
 const AUTO_STREAM_9101 = String(process.env.AUTO_STREAM_9101 || "").toLowerCase() === "true";
 const STREAM_CHANNEL_NO = Number(process.env.STREAM_CHANNEL_NO) || 1;
 const STREAM_DATA_TYPE = Number(process.env.STREAM_DATA_TYPE) || 1;
@@ -52,36 +55,82 @@ function splitPipeDelimitedArgs(s) {
     .filter(Boolean);
 }
 
-const ffmpegMediamtxOpts = MEDIAMTX_FFMPEG_ENABLED
-  ? {
-      ffmpegBin: MEDIAMTX_FFMPEG_BIN,
-      publishUrl: MEDIAMTX_PUBLISH_URL,
-      inputFormat: MEDIAMTX_FFMPEG_INPUT_FORMAT || undefined,
-      extraArgsBeforeInput: (() => {
-        const a = splitPipeDelimitedArgs(process.env.MEDIAMTX_FFMPEG_EXTRA_BEFORE_INPUT || "");
-        return a.length ? a : undefined;
-      })(),
-    }
-  : null;
+const publishUrlMode = resolvePublishUrlMode(process.env);
 
-function getMediamtxPlaybackHints() {
+const ffmpegExtraArgs = (() => {
+  const a = splitPipeDelimitedArgs(process.env.MEDIAMTX_FFMPEG_EXTRA_BEFORE_INPUT || "");
+  return a.length ? a : undefined;
+})();
+
+const mediaPhoneRegistry = new MediaSourceRegistry();
+
+function buildPublishUrlForPhone(phone12) {
+  if (publishUrlMode.kind === "static") return publishUrlMode.url;
+  return expandTemplate(publishUrlMode.template, {
+    phone: phone12 || "",
+    fallbackPhoneLabel: MEDIAMTX_UNKNOWN_PHONE_LABEL,
+  });
+}
+
+function buildFfmpegMediamtx(mediaSocket) {
+  if (!MEDIAMTX_FFMPEG_ENABLED) return null;
+  const ph = mediaPhoneRegistry.getPhoneForMediaSocket(mediaSocket);
+  const publishUrl = buildPublishUrlForPhone(ph);
+  log.info(`[mediamtx] publish ${publishUrl} (jt808 phone for this IP: ${ph || "none — using fallback segment"})`);
+  return {
+    ffmpegBin: MEDIAMTX_FFMPEG_BIN,
+    publishUrl,
+    inputFormat: MEDIAMTX_FFMPEG_INPUT_FORMAT || undefined,
+    extraArgsBeforeInput: ffmpegExtraArgs,
+  };
+}
+
+function getMediamtxPlaybackHints(forPhone12) {
   const wantHints =
     MEDIAMTX_FFMPEG_ENABLED || !!MEDIAMTX_PLAYBACK_URL || MEDIAMTX_PLAYBACK_HINTS;
   if (!wantHints) return null;
-  const rtsp =
-    MEDIAMTX_PLAYBACK_URL ||
-    (() => {
-      const host = MEDIAMTX_PLAYBACK_HOST || MEDIA_PUBLIC_HOST;
-      if (!host || host === "0.0.0.0") return "";
-      return `rtsp://${host}:${MEDIAMTX_RTSP_PORT}/${MEDIAMTX_PATH}`;
-    })();
-  if (!rtsp) return null;
+
+  if (publishUrlMode.kind === "static") {
+    const rtsp =
+      MEDIAMTX_PLAYBACK_URL ||
+      (() => {
+        const host = MEDIAMTX_PLAYBACK_HOST || MEDIA_PUBLIC_HOST;
+        if (!host || host === "0.0.0.0") return "";
+        return `rtsp://${host}:${MEDIAMTX_RTSP_PORT}/${MEDIAMTX_PATH}`;
+      })();
+    if (!rtsp) return null;
+    const host = MEDIAMTX_PLAYBACK_HOST || MEDIA_PUBLIC_HOST;
+    const hls =
+      host && host !== "0.0.0.0"
+        ? `http://${host}:${MEDIAMTX_HLS_PORT}/${MEDIAMTX_PATH}/index.m3u8`
+        : null;
+    return { rtsp, ...(hls ? { hls } : {}) };
+  }
+
   const host = MEDIAMTX_PLAYBACK_HOST || MEDIA_PUBLIC_HOST;
-  const hls =
-    host && host !== "0.0.0.0"
-      ? `http://${host}:${MEDIAMTX_HLS_PORT}/${MEDIAMTX_PATH}/index.m3u8`
-      : null;
-  return { rtsp, ...(hls ? { hls } : {}) };
+  const playbackTpl =
+    MEDIAMTX_PLAYBACK_URL_TEMPLATE ||
+    `rtsp://{host}:${MEDIAMTX_RTSP_PORT}/${MEDIAMTX_PLAYBACK_PATH_TEMPLATE}`;
+
+  if (!forPhone12) {
+    if (!host || host === "0.0.0.0") {
+      return {
+        rtspUrlTemplate: playbackTpl,
+        note: "Set MEDIAMTX_PLAYBACK_HOST or MEDIAMTX_PLAYBACK_URL_TEMPLATE; substitute {phone} with 12-digit terminal id",
+      };
+    }
+    return {
+      rtspUrlTemplate: playbackTpl,
+      rtspExample: expandTemplate(playbackTpl, { host, phone: "015770066239" }),
+      note: "VLC URL is per terminal phone; POST /jt808/stream/request returns mediamtx for that phone",
+    };
+  }
+
+  if (!host || host === "0.0.0.0") return null;
+  const rtsp = expandTemplate(playbackTpl, { host, phone: forPhone12 });
+  const pathOnly = expandPathTemplate(MEDIAMTX_PLAYBACK_PATH_TEMPLATE, forPhone12, MEDIAMTX_UNKNOWN_PHONE_LABEL);
+  const hls = `http://${host}:${MEDIAMTX_HLS_PORT}/${pathOnly}/index.m3u8`;
+  return { rtsp, hls };
 }
 
 /** @type {Map<string, import('./jt808/session').Jt808TcpSession>} */
@@ -118,6 +167,9 @@ const jt808Server = net.createServer((socket) => {
     streamDataType: STREAM_DATA_TYPE,
     streamStreamType: STREAM_STREAM_TYPE,
     log,
+    onTerminalPhone(sock, phone) {
+      mediaPhoneRegistry.noteTerminalPhone(sock, phone);
+    },
     onMessage(sess, parsed, decoded) {
       registerSession(sess);
       log.info(
@@ -133,11 +185,13 @@ const jt808Server = net.createServer((socket) => {
   });
   socket.on("end", () => {
     unregisterSession(session);
+    mediaPhoneRegistry.clearForSocket(socket);
     debug(`[jt808] end ${remote} rxBytes=${session._rxBytes}`);
     log.info(`[jt808] disconnected ${remote}`);
   });
   socket.on("error", (err) => {
     unregisterSession(session);
+    mediaPhoneRegistry.clearForSocket(socket);
     if (isBenignSocketEnd(err.code)) {
       log.info(`[jt808] peer closed ${remote} (${err.code})`);
     } else {
@@ -161,12 +215,16 @@ jt808Server.listen(PORT, HOST, async () => {
   try {
     await startMediaTcpServer(MEDIA_PORT, MEDIA_HOST, log, {
       recordDir: MEDIA_RECORD_DIR || null,
-      ffmpegMediamtx: ffmpegMediamtxOpts,
+      buildFfmpegMediamtx,
     });
     if (MEDIAMTX_FFMPEG_ENABLED) {
+      const mode =
+        publishUrlMode.kind === "static"
+          ? `static ${publishUrlMode.url}`
+          : `per-ip phone → ${publishUrlMode.template}`;
       const h = getMediamtxPlaybackHints();
       log.info(
-        `[mediamtx] ffmpeg bridge on (publish ${MEDIAMTX_PUBLISH_URL})${h ? `; playback ${JSON.stringify(h)}` : "; set MEDIAMTX_PLAYBACK_URL or MEDIAMTX_PLAYBACK_HINTS for VLC URLs"}`
+        `[mediamtx] ffmpeg bridge on (${mode})${h ? `; hints ${JSON.stringify(h)}` : "; set MEDIAMTX_PLAYBACK_HOST / MEDIAMTX_PLAYBACK_HINTS for VLC URLs"}`
       );
     }
   } catch (e) {

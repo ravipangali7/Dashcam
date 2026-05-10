@@ -86,6 +86,9 @@ class Jt808TcpSession {
     }
     const phone = decodePhone(parsed.terminalPhone);
     if (!this.terminalPhone) this.terminalPhone = phone;
+    if (phone && String(phone).replace(/\D/g, "").length >= 6) {
+      this.opts.onTerminalPhone?.(this.socket, phone);
+    }
     const decoded = decodeMessage(parsed.msgId, parsed.body, parsed.terminalPhone);
     debug(`[jt808] decoded ${this.remote} name=${decoded.name} msgId=${decoded.msgId}`);
     this.opts.onMessage?.(this, parsed, decoded);
