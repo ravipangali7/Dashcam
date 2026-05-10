@@ -216,6 +216,7 @@ jt808Server.listen(PORT, HOST, async () => {
     await startMediaTcpServer(MEDIA_PORT, MEDIA_HOST, log, {
       recordDir: MEDIA_RECORD_DIR || null,
       buildFfmpegMediamtx,
+      logMediamtxVlcHint: !MEDIAMTX_FFMPEG_ENABLED,
     });
     if (MEDIAMTX_FFMPEG_ENABLED) {
       const mode =
@@ -225,6 +226,10 @@ jt808Server.listen(PORT, HOST, async () => {
       const h = getMediamtxPlaybackHints();
       log.info(
         `[mediamtx] ffmpeg bridge on (${mode})${h ? `; hints ${JSON.stringify(h)}` : "; set MEDIAMTX_PLAYBACK_HOST / MEDIAMTX_PLAYBACK_HINTS for VLC URLs"}`
+      );
+    } else {
+      log.info(
+        "[mediamtx] ffmpeg bridge off — VLC RTSP URLs will not work until MEDIAMTX_FFMPEG_ENABLED=true (MediaMTX needs a live publisher on that path)."
       );
     }
   } catch (e) {
