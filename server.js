@@ -1,36 +1,99 @@
 require("dotenv").config();
 
 const net = require("node:net");
+const { Jt808TcpSession } = require("./jt808/session");
+const { startMediaTcpServer } = require("./media/server");
+const { startControlApi } = require("./http/controlApi");
 
 const PORT = Number(process.env.PORT) || 9000;
 const HOST = process.env.HOST || "0.0.0.0";
+const MEDIA_PORT = Number(process.env.MEDIA_PORT) || 10700;
+const MEDIA_HOST = process.env.MEDIA_HOST || "0.0.0.0";
+const MEDIA_PUBLIC_HOST =
+  process.env.MEDIA_PUBLIC_HOST || process.env.HOST_PUBLIC || "127.0.0.1";
+const MEDIA_UDP_PORT = Number(process.env.MEDIA_UDP_PORT) || 0;
+const HTTP_CONTROL_PORT = Number(process.env.HTTP_CONTROL_PORT) || 0;
+const HTTP_CONTROL_HOST = process.env.HTTP_CONTROL_HOST || "0.0.0.0";
+const JT808_PROTOCOL = (process.env.JT808_PROTOCOL || "2013").toLowerCase() === "2019" ? "2019" : "2013";
+const AUTO_REPLY_REGISTER = String(process.env.AUTO_REPLY_REGISTER || "").toLowerCase() === "true";
+const AUTO_PLATFORM_ACK = String(process.env.AUTO_PLATFORM_GENERAL_ACK || "").toLowerCase() === "true";
+const REGISTER_AUTH_CODE = process.env.REGISTER_AUTH_CODE || "AUTH";
+const MEDIA_RECORD_DIR = process.env.MEDIA_RECORD_DIR || "";
 
-const server = net.createServer((socket) => {
+const log = {
+  info: (...a) => console.log(new Date().toISOString(), ...a),
+  warn: (...a) => console.warn(new Date().toISOString(), ...a),
+};
+
+/** @type {Map<string, import('./jt808/session').Jt808TcpSession>} */
+const sessionsByPhone = new Map();
+
+function registerSession(sess) {
+  if (!sess.terminalPhone) return;
+  sessionsByPhone.set(sess.terminalPhone, sess);
+}
+
+function unregisterSession(sess) {
+  if (sess.terminalPhone) sessionsByPhone.delete(sess.terminalPhone);
+}
+
+const jt808Server = net.createServer((socket) => {
   const remote = `${socket.remoteAddress}:${socket.remotePort}`;
-  console.log(`client connected: ${remote}`);
+  log.info(`[jt808] client ${remote}`);
 
-  socket.setEncoding("utf8");
-
-  socket.on("data", (chunk) => {
-    process.stdout.write(`[${remote}] ${chunk}`);
-    socket.write(chunk);
+  const session = new Jt808TcpSession(socket, {
+    protocolYear: JT808_PROTOCOL,
+    autoReplyRegister: AUTO_REPLY_REGISTER,
+    autoPlatformGeneralAck: AUTO_PLATFORM_ACK,
+    registerAuthCode: REGISTER_AUTH_CODE,
+    log,
+    onMessage(sess, parsed, decoded) {
+      registerSession(sess);
+      log.info(`[jt808] ${remote} ${decoded.name} ${JSON.stringify(decoded.detail)}`);
+    },
   });
 
+  socket.setNoDelay(true);
+  socket.on("data", (chunk) => session.feed(chunk));
   socket.on("end", () => {
-    console.log(`client disconnected: ${remote}`);
+    unregisterSession(session);
+    log.info(`[jt808] disconnected ${remote}`);
   });
-
   socket.on("error", (err) => {
-    console.error(`socket error (${remote}):`, err.message);
+    unregisterSession(session);
+    log.warn(`[jt808] socket error ${remote}: ${err.message}`);
   });
 });
 
-server.on("error", (err) => {
-  console.error("server error:", err.message);
+jt808Server.on("error", (err) => {
+  log.warn(`jt808 server error: ${err.message}`);
   process.exit(1);
 });
 
-server.listen(PORT, HOST, () => {
-  const addr = server.address();
-  console.log(`TCP listening on ${addr.address}:${addr.port}`);
+jt808Server.listen(PORT, HOST, async () => {
+  const a = jt808Server.address();
+  log.info(`[jt808] TCP (signalling) on ${a.address}:${a.port} protocol=${JT808_PROTOCOL}`);
+
+  try {
+    await startMediaTcpServer(MEDIA_PORT, MEDIA_HOST, log, MEDIA_RECORD_DIR || null);
+  } catch (e) {
+    log.warn(`[media] failed to bind: ${e.message}`);
+  }
+
+  if (HTTP_CONTROL_PORT > 0) {
+    try {
+      await startControlApi(HTTP_CONTROL_PORT, HTTP_CONTROL_HOST, log, {
+        sessionsByPhone,
+        mediaEndpoint: () => ({
+          host: MEDIA_PUBLIC_HOST,
+          tcpPort: MEDIA_PORT,
+          udpPort: MEDIA_UDP_PORT,
+        }),
+      });
+    } catch (e) {
+      log.warn(`[http] failed to bind: ${e.message}`);
+    }
+  } else {
+    log.info("[http] control API disabled (set HTTP_CONTROL_PORT>0 to enable)");
+  }
 });
