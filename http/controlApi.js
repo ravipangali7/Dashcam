@@ -90,7 +90,12 @@ function startControlApi(port, host, log, ctx) {
             "POST /jt808/stream/stop JSON { phone, channelNo?, controlCmd? (0=close), closeAudioVideoData?, streamType? }",
           ],
           msgIds: { "0x9101": MSG.REALTIME_AV_REQUEST, "0x9102": MSG.REALTIME_AV_CONTROL },
-          ...(hints ? { mediamtxPlayback: hints, note: "VLC: Open Network Stream → mediamtx.rtsp after publisher is up" } : {}),
+          ...(hints
+            ? {
+                mediamtxPlayback: hints,
+                note: "VLC: Media → Open Network Stream… → paste the rtsp:// URL (needs ffmpeg publish + TCP 8554 open).",
+              }
+            : {}),
         });
       }
       json(res, 404, { error: "not found" });

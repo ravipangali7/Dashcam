@@ -37,6 +37,8 @@ const MEDIAMTX_PLAYBACK_HINTS =
 const MEDIAMTX_PLAYBACK_URL_TEMPLATE = (process.env.MEDIAMTX_PLAYBACK_URL_TEMPLATE || "").trim();
 const MEDIAMTX_PLAYBACK_PATH_TEMPLATE = (process.env.MEDIAMTX_PLAYBACK_PATH_TEMPLATE || "dashcam/{phone}").trim();
 const MEDIAMTX_UNKNOWN_PHONE_LABEL = (process.env.MEDIAMTX_UNKNOWN_PHONE_LABEL || "unknown").trim() || "unknown";
+const MEDIAMTX_PLAYBACK_INCLUDE_HLS =
+  String(process.env.MEDIAMTX_PLAYBACK_INCLUDE_HLS || "").toLowerCase() === "true";
 const AUTO_STREAM_9101 = String(process.env.AUTO_STREAM_9101 || "").toLowerCase() === "true";
 const STREAM_CHANNEL_NO = Number(process.env.STREAM_CHANNEL_NO) || 1;
 const STREAM_DATA_TYPE = Number(process.env.STREAM_DATA_TYPE) || 1;
@@ -85,6 +87,12 @@ function buildFfmpegMediamtx(mediaSocket) {
   };
 }
 
+function maybeHlsPlayback(host, pathForUrl) {
+  if (!MEDIAMTX_PLAYBACK_INCLUDE_HLS || !host || host === "0.0.0.0" || !pathForUrl) return {};
+  const u = pathForUrl.replace(/^\//, "");
+  return { hls: `http://${host}:${MEDIAMTX_HLS_PORT}/${u}/index.m3u8` };
+}
+
 function getMediamtxPlaybackHints(forPhone12) {
   const wantHints =
     MEDIAMTX_FFMPEG_ENABLED || !!MEDIAMTX_PLAYBACK_URL || MEDIAMTX_PLAYBACK_HINTS;
@@ -100,11 +108,7 @@ function getMediamtxPlaybackHints(forPhone12) {
       })();
     if (!rtsp) return null;
     const host = MEDIAMTX_PLAYBACK_HOST || MEDIA_PUBLIC_HOST;
-    const hls =
-      host && host !== "0.0.0.0"
-        ? `http://${host}:${MEDIAMTX_HLS_PORT}/${MEDIAMTX_PATH}/index.m3u8`
-        : null;
-    return { rtsp, ...(hls ? { hls } : {}) };
+    return { rtsp, ...maybeHlsPlayback(host, MEDIAMTX_PATH) };
   }
 
   const host = MEDIAMTX_PLAYBACK_HOST || MEDIA_PUBLIC_HOST;
@@ -129,8 +133,7 @@ function getMediamtxPlaybackHints(forPhone12) {
   if (!host || host === "0.0.0.0") return null;
   const rtsp = expandTemplate(playbackTpl, { host, phone: forPhone12 });
   const pathOnly = expandPathTemplate(MEDIAMTX_PLAYBACK_PATH_TEMPLATE, forPhone12, MEDIAMTX_UNKNOWN_PHONE_LABEL);
-  const hls = `http://${host}:${MEDIAMTX_HLS_PORT}/${pathOnly}/index.m3u8`;
-  return { rtsp, hls };
+  return { rtsp, ...maybeHlsPlayback(host, pathOnly) };
 }
 
 /** @type {Map<string, import('./jt808/session').Jt808TcpSession>} */

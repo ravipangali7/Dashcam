@@ -12,8 +12,8 @@ rtspAddress: :8554
 # TCP-only RTSP avoids opening UDP 8000/8001 on your firewall for playback.
 rtspTransports: [tcp]
 
-hls: true
-hlsAddress: :8888
+# RTSP-only default; set hls: true (+ port) if you want browser HLS as well.
+hls: false
 
 rtmp: false
 webrtc: false
@@ -23,5 +23,6 @@ pathDefaults:
   source: publisher
   overridePublisher: true
 
+# Accept any path (e.g. dashcam/{phone} from Node/ffmpeg) without listing each device.
 paths:
-  dashcam:
+  all_others:
